@@ -8,3 +8,4 @@ class Source(Base):
     name=Column(String(160),nullable=False)
     filename=Column(String(160),nullable=False)
     description=Column(Text,default='')
+    schema_version=Column(String(20),nullable=False,default='v1')

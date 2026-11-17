@@ -9,6 +9,7 @@ class Run(Base):
     state=Column(String(20),default='queued')
     parameters=Column(JSON,nullable=False)
     snapshot=Column(JSON,nullable=False)
+    schema_version=Column(String(20),nullable=False,default='v1')
     result=Column(JSON,nullable=True)
     error=Column(Text,default='')
     created_at=Column(String(40),nullable=False)

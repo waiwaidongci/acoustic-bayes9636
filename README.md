@@ -10,10 +10,11 @@ GaussianNB与分层交叉验证、混淆矩阵和后验解释。为桐弦研究�
 
 1. 业务总览：批次、样本、任务与批准交付账册。
 2. 声检批次：创建/修改来源说明、查看样本、用真实业务字段追加记录；列表分页。
-3. 分析配置：冻结来源、参数和全部样本，进入Redis队列。
-4. 完整结果：真实算法摘要、专属诊断、全部CSV导出和可恢复失败态。
-5. 复检批注：分析师草案→负责人批准→阅读者下载批准快照。
-6. 审计：登录、来源修改、任务worker完成、业务说明批准等事件。
+3. 口径换版：发起批次特征口径迁移、分批换算进度、阻塞原因与隔离样本修正、整批切换。
+4. 分析配置：冻结来源、参数和全部样本，进入Redis队列。
+5. 完整结果：真实算法摘要、专属诊断、全部CSV导出和可恢复失败态。
+6. 复检批注：分析师草案→负责人批准→阅读者下载批准快照。
+7. 审计：登录、来源修改、任务worker完成、业务说明批准等事件。
 
 ## 快速启动
 
@@ -53,7 +54,18 @@ JWT有效期8小时；PBKDF2盐化哈希保存密码；角色每请求从数据�
 
 ## 实体与字段
 
-AcousticBatch / AcousticSample / ClassifierRun / InspectionNote 是核心实体；另有User和Audit。数据库实际表：`acoustic_batches` → `acoustic_samples` → `classifier_runs` → `inspection_notes`。样本以固定字段JSON保存，后端按以下字段严格验证，不接受未知字段替代必填值：均方根振幅（`rms`）、频谱质心 Hz（`centroid`）、峭度（`kurtosis`）、复核类型（`label`）。
+AcousticBatch / AcousticSample / ClassifierRun / InspectionNote 是核心实体；另有User和Audit。数据库实际表：`acoustic_batches` → `acoustic_samples` → `classifier_runs` → `inspection_notes`。样本以固定字段JSON保存，后端按字段定义严格验证，不接受未知字段替代必填值：均方根振幅（`rms`）、频谱质心（`centroid`）、峭度（`kurtosis`）、复核类型（`label`）。
+
+### 批次特征口径在线换版
+
+声检仪更换后，频谱质心由 Hz 改为 kHz 上报。口径定义在 `backend/src/config/domain.json` 的 `feature_schemas`：`v1` 旧口径（Hz）、`v2` 新口径（kHz），每个字段声明标签、别名、单位、换算到基准单位的系数与是否必填。换算始终以样本保留的原始上报值为起点，重复执行不会二次换算。
+
+- 批次（`acoustic_batches.schema_version`）记录当前口径。迁移期间新旧口径都可带 `schema_version` 入样，未指定时默认新口径。
+- `POST /schema/migrations` 发起迁移；worker 按 `id` 游标分批（`MIGRATION_BATCH_SIZE`，默认 200）换算到 `converted_values`，逐批提交，内存不随样本总量增长；中断后由 `sweep_cursor` 续跑。
+- 缺项、非有限数值、别名互相矛盾的样本写入 `schema_migration_issues` 隔离，并阻止切换；可用修正接口按旧或新口径补齐后重新检查。
+- `POST /schema/migrations/{id}/switch` 在持有批次行锁的事务中校验“全部有效样本就绪”，再原子提升 `converted_values` 并把批次口径改为新口径。入样同样锁该行，因此切换与并发入样之间不会漏样或混版。
+- 研究冻结口径与样本快照：迁移完成前不能从混版批次建立研究，可显式指定一种口径建立分版研究；切换后新研究冻结新口径，既有研究快照不变。
+- 页面“口径换版”可发起迁移、查看进度、阻塞原因与隔离样本。
 
 实体贯穿 `backend/src/models`、`schemas`、`services`、`controllers`、`routes`，以及 `frontend/src/api/research.js`、`stores/research.js` 和 `pages`。`Source.key` 与 `(Record.source_id, reference)` 为自然键；来源改名不会修改已冻结任务输入。业务说明在创建时保存结果快照，批准后从该快照导出。
 
@@ -74,6 +86,7 @@ GaussianNB与分层交叉验证、混淆矩阵和后验解释，全部计算位�
 
 固定seed=42，3个来源 ` TX-202611-01/02/03`，每来源240条，共720条业务记录；三个账号和首轮种子任务。自然键检查后仅插入缺失数据，连跑seed不重复、不覆盖用户修改。`SEED_DEMO=true` 时启动自动执行；失败记录日志但不阻塞服务。首轮任务同样由独立worker真实计算。
 
+0. 设备更换时，负责人在“口径换版”发起迁移，确认全部有效样本就绪后整批切换。
 1. 09:00 负责人查看三份来源和720条样本。
 2. 09:10 分析师选择 `TX-202611-01 秋季常规组`，核对 `acoustic-bayes-202611-01.csv`。
 3. 09:15 在“声检批次”核对均方根振幅（`rms`）、频谱质心 Hz（`centroid`）、峭度（`kurtosis`）、复核类型（`label`），追加编号 `TX-NEW-001` 的样本。
@@ -105,4 +118,4 @@ backend/migrations/001_initial.sql
 
 共享枚举：`backend/src/constants/enums.py` 与 `frontend/src/constants/enums.js` 都定义 admin/analyst/viewer、queued/running/completed/failed、draft/approved。后端service检查对应字符串；README为全量值说明。共享前端组件table/status/chart/business跨总览、结果、配置与复核复用；actions hook和format utils负责交互/格式。后端errors与rate_limit是两个中间件。
 
-测试及截图在批根 `test-artifacts/gb-0041/`，不混入源码。独立算法oracle、HTTP完整流程和真实Playwright浏览器流程见该目录 `TESTING.md`。License：MIT。
+测试及截图在批根 `test-artifacts/gb-0041/`，不混入源码。独立算法oracle、HTTP完整流程和真实Playwright浏览器流程见该目录 `TESTING.md`；口径换版另有离线用例（`test_schema_rollover.py`、`test_schema_concurrency.py`，含 20 万样本内存边界）与针对真实后端运行的 DOM 流程（`ui_dom_check.mjs`，`run_ui_demo.py` 提供无 Docker 的本地服务）。License：MIT。

@@ -1,6 +1,7 @@
 import math
 from ..config.settings import CONFIG
-def validate_record(values):
+from . import feature_schema
+def _legacy_validate(values):
     out={}
     for key,label,kind in CONFIG['fields']:
         v=values.get(key)
@@ -23,6 +24,16 @@ def validate_record(values):
     if kind=='forest' and (not 0<out['moisture']<=100 or min(out['thickness'],out['temperature'],out['airflow'],out['minutes'])<=0):raise ValueError('湿度需在(0,100]，其余工艺量为正')
     if kind=='neighbors' and not 1<=out['rating']<=5:raise ValueError('评分需在1–5之间')
     return out
+def validate_record(values,version=None):
+    """Validate a submitted sample, resolving aliases/units for its version.
+
+    Returns ``(native_values, raw_values)``.  In the gaussian domain the
+    versioned registry is authoritative (``raw_values`` preserves the original
+    observation).  Other domains keep the legacy single-version validation.
+    """
+    if 'feature_schemas' in CONFIG:
+        return feature_schema.validate_payload(values,version or feature_schema.baseline_version())
+    return _legacy_validate(values),dict(values or {})
 def validate_parameters(params):
     defaults=CONFIG['default_parameters'];out={}
     if set(params)-set(defaults):raise ValueError('包含不支持的分析参数')

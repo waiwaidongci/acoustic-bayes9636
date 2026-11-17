@@ -1,3 +1,17 @@
 -- SQLAlchemy metadata initializes tables idempotently.
 -- Domain tables: acoustic_batches, acoustic_samples, classifier_runs, inspection_notes.
 -- Unique natural keys: source.key; (record.source_id, record.reference).
+
+-- 口径换版（v1 Hz → v2 kHz），由 schema_bootstrap 在启动时幂等补齐：
+-- ALTER TABLE acoustic_batches ADD COLUMN schema_version VARCHAR(20) NOT NULL DEFAULT 'v1';
+-- ALTER TABLE acoustic_samples ADD COLUMN values JSON NOT NULL;              -- 权威值，迁移期间保持原口径
+-- ALTER TABLE acoustic_samples ADD COLUMN schema_version VARCHAR(20) NOT NULL DEFAULT 'v1';
+-- ALTER TABLE acoustic_samples ADD COLUMN raw_values JSON;                   -- 原始上报值（含别名与单位）
+-- ALTER TABLE acoustic_samples ADD COLUMN raw_schema_version VARCHAR(20);
+-- ALTER TABLE acoustic_samples ADD COLUMN converted_values JSON;             -- 目标口径物化值
+-- ALTER TABLE acoustic_samples ADD COLUMN converted_version VARCHAR(20);
+-- ALTER TABLE classifier_runs ADD COLUMN schema_version VARCHAR(20) NOT NULL DEFAULT 'v1';
+-- CREATE TABLE schema_migrations (...); CREATE TABLE schema_migration_issues (...);
+-- CREATE INDEX ix_records_source_id_id ON acoustic_samples (source_id,id);
+-- CREATE INDEX ix_records_source_schema_id ON acoustic_samples (source_id,schema_version,id);
+-- CREATE INDEX ix_records_source_converted_id ON acoustic_samples (source_id,converted_version,id);

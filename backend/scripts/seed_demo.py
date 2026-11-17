@@ -1,16 +1,18 @@
 import json,random,logging
 from sqlalchemy import select,func
 from src.config.database import Base,engine,Session
+from src.config.schema_bootstrap import ensure_schema
 from src.config.settings import CONFIG
 from src.models.user import User
 from src.models.source import Source
 from src.models.record import Record
 from src.models.run import Run
-from src.models import note,audit
+from src.models import note,audit,schema_migration
 from src.utils.security import hash_password
 from src.utils.serialization import now
-from src.services.runs import queue
+from src.services.queueing import enqueue_analysis
 from src.services.domain_validation import validate_record
+from src.services.feature_schema import baseline_version
 
 def seed_values(kind,index,batch,rng):
     if kind=='gaussian':
@@ -33,7 +35,8 @@ def seed_values(kind,index,batch,rng):
 def counts(db):
     return {cls.__tablename__:db.scalar(select(func.count()).select_from(cls)) for cls in (User,Source,Record,Run)}
 def seed():
-    Base.metadata.create_all(engine);rng=random.Random(42);queued=[]
+    Base.metadata.create_all(engine);ensure_schema(engine);rng=random.Random(42);queued=[]
+    version=baseline_version()
     with Session() as db:
         for role in ('admin','analyst','viewer'):
             email=role+'@'+CONFIG['slug']+'.demo'
@@ -42,18 +45,27 @@ def seed():
             key=CONFIG['code']+f'-202611-{batch+1:02}'
             source=db.scalar(select(Source).where(Source.key==key))
             if not source:
-                source=Source(key=key,name=key+' '+['秋季常规组','复测对照组','工艺观察组'][batch],filename=CONFIG['slug']+f'-202611-{batch+1:02}.csv',description=CONFIG['scenario']);db.add(source);db.flush()
+                source=Source(key=key,name=key+' '+['秋季常规组','复测对照组','工艺观察组'][batch],filename=CONFIG['slug']+f'-202611-{batch+1:02}.csv',description=CONFIG['scenario'],schema_version=version);db.add(source);db.flush()
+            elif not getattr(source,'schema_version',None):
+                source.schema_version=version
             for index in range(CONFIG['seed_count']):
                 reference=key+f'-{index+1:04}'
                 vals=seed_values(CONFIG['algorithm'],index,batch,rng)
                 if not db.scalar(select(Record.id).where(Record.source_id==source.id,Record.reference==reference)):
-                    db.add(Record(source_id=source.id,reference=reference,values=validate_record(vals)))
+                    native,raw=validate_record(vals,version)
+                    db.add(Record(source_id=source.id,reference=reference,values=native,
+                                  raw_values=raw,raw_schema_version=version,schema_version=version))
             db.flush()
             if batch==0 and not db.scalar(select(Run.id).where(Run.name=='首轮种子研究')):
-                records=[{'id':r.id,'source_id':r.source_id,'reference':r.reference,'values':r.values} for r in db.scalars(select(Record).where(Record.source_id==source.id).order_by(Record.id))]
-                run=Run(source_id=source.id,name='首轮种子研究',state='queued',parameters=CONFIG['default_parameters'],snapshot={'source':{'id':source.id,'name':source.name,'filename':source.filename},'records':records},created_at=now());db.add(run);db.flush();queued.append(run.id)
+                records=[{'id':r.id,'source_id':r.source_id,'reference':r.reference,
+                          'values':r.values,'schema_version':r.schema_version}
+                         for r in db.scalars(select(Record).where(Record.source_id==source.id).order_by(Record.id))]
+                run=Run(source_id=source.id,name='首轮种子研究',state='queued',parameters=CONFIG['default_parameters'],
+                        snapshot={'source':{'id':source.id,'name':source.name,'filename':source.filename},
+                                  'records':records},schema_version=version,created_at=now())
+                db.add(run);db.flush();queued.append(run.id)
         db.commit();print(json.dumps(counts(db),ensure_ascii=False))
     for id in queued:
-        try:queue.rpush('analysis:queue',id)
+        try:enqueue_analysis(id)
         except Exception:logging.exception('seed queue unavailable')
 if __name__=='__main__':seed()

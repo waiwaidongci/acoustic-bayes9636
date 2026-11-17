@@ -32,7 +32,7 @@
     ],
     [
       "centroid",
-      "频谱质心 Hz",
+      "频谱质心",
       "number"
     ],
     [
@@ -58,6 +58,92 @@
       1e-09
     ]
   ],
+  "feature_schemas": {
+    "baseline": "v1",
+    "target": "v2",
+    "versions": {
+      "v1": {
+        "label": "旧口径",
+        "note": "声检仪更换前：频谱质心以 Hz 上报",
+        "fields": {
+          "rms": {
+            "label": "均方根振幅",
+            "kind": "number",
+            "required": true,
+            "unit": "",
+            "base_factor": 1.0,
+            "min": 0,
+            "aliases": {"rms": 1.0, "root_mean_square": 1.0}
+          },
+          "centroid": {
+            "label": "频谱质心",
+            "kind": "number",
+            "required": true,
+            "unit": "Hz",
+            "base_factor": 1.0,
+            "min": 0,
+            "aliases": {"centroid": 1.0, "centroid_hz": 1.0, "spectral_centroid": 1.0, "spectral_centroid_hz": 1.0, "centroid_khz": 1000.0, "spectral_centroid_khz": 1000.0}
+          },
+          "kurtosis": {
+            "label": "峭度",
+            "kind": "number",
+            "required": true,
+            "unit": "",
+            "base_factor": 1.0,
+            "min": 0,
+            "aliases": {"kurtosis": 1.0}
+          },
+          "label": {
+            "label": "复核类型",
+            "kind": "text",
+            "required": true,
+            "max_length": 600,
+            "aliases": {"label": 1.0, "fault_type": 1.0}
+          }
+        }
+      },
+      "v2": {
+        "label": "新口径",
+        "note": "声检仪更换后：频谱质心以 kHz 上报",
+        "fields": {
+          "rms": {
+            "label": "均方根振幅",
+            "kind": "number",
+            "required": true,
+            "unit": "",
+            "base_factor": 1.0,
+            "min": 0,
+            "aliases": {"rms": 1.0, "root_mean_square": 1.0}
+          },
+          "centroid": {
+            "label": "频谱质心",
+            "kind": "number",
+            "required": true,
+            "unit": "kHz",
+            "base_factor": 1000.0,
+            "min": 0,
+            "aliases": {"centroid": 1.0, "centroid_khz": 1.0, "spectral_centroid_khz": 1.0, "centroid_hz": 0.001, "spectral_centroid_hz": 0.001}
+          },
+          "kurtosis": {
+            "label": "峭度",
+            "kind": "number",
+            "required": true,
+            "unit": "",
+            "base_factor": 1.0,
+            "min": 0,
+            "aliases": {"kurtosis": 1.0}
+          },
+          "label": {
+            "label": "复核类型",
+            "kind": "text",
+            "required": true,
+            "max_length": 600,
+            "aliases": {"label": 1.0, "fault_type": 1.0}
+          }
+        }
+      }
+    }
+  },
   "sample": {
     "rms": 2.1,
     "centroid": 1200,

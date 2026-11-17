@@ -32,7 +32,7 @@ export const domain = {
     ],
     [
       "centroid",
-      "频谱质心 Hz",
+      "频谱质心",
       "number"
     ],
     [
